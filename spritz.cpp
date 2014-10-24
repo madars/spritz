@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <random>
 
@@ -8,24 +9,34 @@ void calculate_spritz(const size_t N, const size_t num_tries, const size_t num_o
 {
     std::vector<float> chis;
 
+    assert(N * N * N <= 5 * num_outputs);
+
     double expected = (1.*num_outputs)/N/N/N;
     double expected_chi = (N-1)*(N-1)*(N-1);
     double expected_stddev_chi = sqrt(2.*expected_chi);
 
     for (size_t trial = 0; trial < num_tries; ++trial)
     {
-        std::vector<std::vector<std::vector<size_t> > > bias_table;
+#ifdef DEBUG
+        printf("running trial %zu out of %zu\n", trial+1, num_tries);
+#else
+        if (trial % 1000 == 999)
+        {
+            printf("running trial %zu out of %zu\n", trial+1, num_tries);
+        }
+#endif
 
-        bias_table.resize(N);
+        std::vector<std::vector<std::vector<size_t> > > count_table;
+
+        count_table.resize(N);
         for (size_t i = 0; i < N; ++i)
         {
-            bias_table[i].resize(N);
+            count_table[i].resize(N);
             for (size_t j = 0; j < N; ++j)
             {
-                bias_table[i][j].resize(N);
+                count_table[i][j].resize(N);
             }
         }
-
 
         const size_t num_prevs = 10;
 
@@ -44,7 +55,6 @@ void calculate_spritz(const size_t N, const size_t num_tries, const size_t num_o
         for (size_t outno = 0; outno < num_outputs; ++outno)
         {
             i = (i + 1) % N;
-
             j = (k + S[(j + S[i]) % N]) % N;
             k = (i + k + S[j]) % N;
             std::swap(S[i], S[j]);
@@ -54,14 +64,13 @@ void calculate_spritz(const size_t N, const size_t num_tries, const size_t num_o
             buf_j[buf_pos] = j;
             buf_k[buf_pos] = k;
             buf_z[buf_pos] = z;
-
-            const size_t idx1 = buf_z[(buf_pos+num_prevs-2) % num_prevs];
-            const size_t idx2 = buf_z[(buf_pos+num_prevs-1) % num_prevs];
-            const size_t idx3 = z;
-
-            bias_table[idx1][idx2][idx3] += 1;
-
             buf_pos = (buf_pos == num_prevs-1 ? 0 : buf_pos + 1);
+
+            const size_t idx1 = i;
+            const size_t idx2 = buf_z[(buf_pos+num_prevs-3) % num_prevs];
+            const size_t idx3 = buf_z[(buf_pos+num_prevs-1) % num_prevs];
+
+            count_table[idx1][idx2][idx3] += 1;
         }
 
         double chi = 0;
@@ -71,12 +80,15 @@ void calculate_spritz(const size_t N, const size_t num_tries, const size_t num_o
             {
                 for (size_t k = 0; k < N; ++k)
                 {
-                    chi += (bias_table[i][j][k] - expected)*(bias_table[i][j][k] - expected);
+                    chi += (count_table[i][j][k] - expected)*(count_table[i][j][k] - expected);
                 }
             }
         }
         chi /= expected;
         chis.emplace_back(chi);
+#ifdef DEBUG
+        printf("got chi value of %0.3f (expected: %0.3f, deviations from expected: %0.3f)\n", chi, expected_chi, fabs((chi-expected_chi)/expected_stddev_chi));
+#endif
     }
 
     double chi_avg = 0;
@@ -101,5 +113,5 @@ void calculate_spritz(const size_t N, const size_t num_tries, const size_t num_o
 
 int main(void)
 {
-    calculate_spritz(16, 100, 1<<20);
+    calculate_spritz(16, 1ul<<18, 1ul<<18);
 }
